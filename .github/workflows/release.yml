@@ -1,0 +1,49 @@
+name: Release
+
+# Publishes to PyPI when a version tag is pushed (e.g. `v0.1.0`).
+# Uses PyPI Trusted Publishing (OIDC) — no API token stored in the repo.
+# Set up a "pypi" environment and a trusted publisher on PyPI before the first run.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    name: build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist + wheel
+        run: uv build
+      - name: Smoke-test the built wheel
+        shell: bash
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl
+          /tmp/clean/bin/python -c "import rasputin, rasputin.server; from rasputin.config import load_config; load_config(); print('smoke OK', rasputin.__version__)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/rasputin
+    permissions:
+      id-token: write  # required for Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

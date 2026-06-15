@@ -1,0 +1,227 @@
+defaults:
+  temperature: 0.7
+  max_output_tokens: 8192   # raised from 4096: gpt-5/o-series spend part of the
+                            # completion budget on reasoning tokens before the
+                            # visible answer; 4096 risks truncated/empty replies.
+  timeout_per_model: 60
+  max_file_chars: 200000     # per-file cap on extracted text sent to the models
+                            # (bounds token cost; files are also hard-capped at
+                            # 50 MB on disk before parsing).
+  system_prompt: >
+    You are a senior, independent reviewer. Be direct and specific;
+    flag issues only when they matter and skip empty praise.
+
+council:
+  consensus_model: "gemini/gemini-flash-latest"
+  max_debate_rounds: 3
+  session_ttl_minutes: 120
+  max_sessions: 100          # LRU cap on concurrent in-memory sessions
+  max_cost_usd: 0            # debate budget cap in USD; 0 = no cap
+
+# Sweet-spot model selection (maggio 2026):
+#   - OpenAI gpt-5 family: same price tier as the old gpt-4.1 family, one full
+#     generation ahead (gpt-5 1.25/10, gpt-5-mini 0.25/2, gpt-5-nano 0.05/0.40).
+#     gpt-5.4/5.5 add marginal capability at 2-4x the cost — not worth it here.
+#   - Gemini: gemini-flash-latest (same price as 2.5-flash, tracks newest flash)
+#     for cheap tiers; gemini-3.1-pro-preview (2/12) only on premium presets.
+#   - Mistral: already optimal via -latest (large 0.50/1.50, small 0.06/0.18).
+
+presets:
+  flash:
+    description: "Quick external sanity check"
+    mode: opinions
+    models:
+      - id: "gemini/gemini-flash-latest"
+        role: reviewer
+    system_prompt: >
+      You are a senior reviewer. Be direct, flag issues only if
+      significant. Skip praise.
+
+  nano:
+    description: "Ultra-budget duo"
+    mode: opinions
+    models:
+      - id: "openai/gpt-5-nano"
+        role: reviewer
+      - id: "mistral/mistral-small-latest"
+        role: reviewer
+    system_prompt: >
+      Top 3 issues only. Max 100 words.
+
+  trio:
+    description: "Standard 3-family council (default)"
+    mode: opinions
+    models:
+      - id: "gemini/gemini-flash-latest"
+        role: reviewer
+      - id: "openai/gpt-5-mini"
+        role: reviewer
+      - id: "mistral/mistral-large-latest"
+        role: reviewer
+    system_prompt: >
+      You are one member of a review council. Give your honest assessment.
+      Structure: (1) Key issues, (2) Suggestions, (3) Verdict: approve/revise/reject.
+
+  code:
+    description: "Code review panel"
+    mode: opinions
+    models:
+      - id: "openai/gpt-5"
+        role: reviewer
+      - id: "gemini/gemini-flash-latest"
+        role: reviewer
+      - id: "mistral/mistral-large-latest"
+        role: reviewer
+    system_prompt: >
+      Senior engineer PR review. Focus: bugs, security, performance,
+      edge cases. NOT style. Severity: BLOCKER / MAJOR / MINOR.
+
+  copy:
+    description: "Creative content critique"
+    mode: opinions
+    models:
+      - id: "mistral/mistral-large-latest"
+        role: critic
+      - id: "openai/gpt-5-mini"
+        role: critic
+      - id: "gemini/gemini-flash-latest"
+        role: critic
+    system_prompt: >
+      Seasoned copywriter critique: hook, clarity, tone,
+      call-to-action, cut list. Be brutal about cutting.
+
+  factcheck:
+    description: "Claim verification"
+    mode: opinions
+    models:
+      - id: "gemini/gemini-3.1-pro-preview"
+        role: factchecker
+      - id: "openai/gpt-5"
+        role: factchecker
+      - id: "mistral/mistral-large-latest"
+        role: factchecker
+    system_prompt: >
+      Fact-checker. For each claim: VERIFIED / UNVERIFIED / DISPUTED / FALSE.
+      Confidence: high/medium/low. Ignore opinions.
+
+  redteam:
+    description: "Adversarial flaw-finding"
+    mode: opinions
+    models:
+      - id: "openai/gpt-5"
+        role: attacker
+      - id: "gemini/gemini-3.1-pro-preview"
+        role: attacker
+      - id: "mistral/mistral-large-latest"
+        role: attacker
+    system_prompt: >
+      Red team analyst. ONLY find flaws, risks, contradictions, attack vectors,
+      failure modes. Do NOT mention strengths.
+      Severity: CRITICAL / HIGH / MEDIUM / LOW.
+
+  consensus:
+    description: "Convergence-seeking council"
+    mode: review
+    models:
+      - id: "gemini/gemini-flash-latest"
+        role: voter
+      - id: "openai/gpt-5-mini"
+        role: voter
+      - id: "mistral/mistral-small-latest"
+        role: voter
+    rounds:
+      1:
+        system_prompt: >
+          Independent assessment. End with clear RECOMMENDATION.
+      2:
+        system_prompt: >
+          All assessments visible. State: AGREEMENT / DISAGREEMENT
+          with reasoning / FINAL recommendation.
+
+  devil:
+    description: "Contrarian stress-test"
+    mode: debate
+    max_rounds: 2
+    models:
+      - id: "mistral/mistral-large-latest"
+        role: contrarian
+      - id: "openai/gpt-5"
+        role: contrarian
+      - id: "gemini/gemini-3.1-pro-preview"
+        role: contrarian
+    rounds:
+      1:
+        system_prompt: >
+          Argue AGAINST the position. Strongest counterarguments. Be specific.
+      2:
+        system_prompt: >
+          The author has responded. Find weaknesses in their defense.
+
+  panel:
+    description: "Expert panel with diverse personas"
+    mode: opinions
+    models:
+      - id: "gemini/gemini-3.1-pro-preview"
+        role: strategist
+        system_prompt: >
+          You are a STRATEGIST. Long-term implications, positioning,
+          opportunity cost, competitive dynamics.
+      - id: "openai/gpt-5"
+        role: engineer
+        system_prompt: >
+          You are an ENGINEER. Feasibility, tech debt, scalability,
+          implementation complexity, maintenance burden.
+      - id: "mistral/mistral-large-latest"
+        role: skeptic
+        system_prompt: >
+          You are a SKEPTIC and USER ADVOCATE. Challenge assumptions.
+          Why not the simpler approach? UX, adoption friction.
+
+  deep:
+    description: "Premium council with peer review"
+    mode: review
+    models:
+      - id: "gemini/gemini-3.1-pro-preview"
+        role: reviewer
+      - id: "openai/gpt-5"
+        role: reviewer
+      - id: "mistral/mistral-large-latest"
+        role: reviewer
+    rounds:
+      1:
+        system_prompt: >
+          Provide thorough, comprehensive analysis.
+      2:
+        system_prompt: >
+          You have seen the other reviewers' opinions (anonymized).
+          Identify where you agree, disagree, and what was missed.
+
+  arena:
+    description: "Structured adversarial debate"
+    mode: debate
+    max_rounds: 3
+    models:
+      - id: "openai/gpt-5"
+        role: pro
+        system_prompt: >
+          Argue IN FAVOR. Build the strongest possible case.
+          Address counterarguments preemptively.
+      - id: "mistral/mistral-large-latest"
+        role: contra
+        system_prompt: >
+          Argue AGAINST. Dismantle arguments. Propose alternatives.
+      - id: "gemini/gemini-3.1-pro-preview"
+        role: arbiter
+        system_prompt: >
+          Arbiter. Each round: strongest argument per side,
+          unresolved tensions. Final round: declare which side wins.
+
+aliases:
+  default: trio
+  quick: flash
+  cheap: nano
+  review: trio
+  secure: redteam
+  strategy: panel
+  decide: consensus
+  fight: arena

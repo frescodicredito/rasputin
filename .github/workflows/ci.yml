@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }} / py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Import entrypoint (real import, not py_compile)
+        shell: bash
+        run: |
+          uv run python -c "import rasputin.server as s; assert s.mcp is not None; print('rasputin.server imported OK:', s.mcp.name)"
+
+      - name: Run tests
+        run: uv run pytest -q
+
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Ruff
+        run: uv run --with ruff ruff check .
+
+  audit:
+    name: dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: pip-audit
+        run: uv run --with pip-audit pip-audit --skip-editable
+
+  package:
+    name: build & smoke-test wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel
+        run: uv build --wheel
+      - name: Install wheel in a clean venv and start the server
+        shell: bash
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl
+          # Real install check: the bundled config must load and the entrypoint import.
+          /tmp/clean/bin/python -c "import rasputin, rasputin.server; from rasputin.config import load_config; load_config(); print('smoke OK', rasputin.__version__)"

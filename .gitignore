@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Internal planning docs (not for public repo)
+IMPLEMENTATION_PLAN.md
+PROJECT.md
+docs/plans/
+
+# Environment
+.env
+.env.*
