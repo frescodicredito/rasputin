@@ -6,7 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Calls to `gpt-5.5`/`gpt-5.6` no longer fail with a 400. Those models accept
+  only `temperature=1`, but LiteLLM still lists `temperature` as supported for
+  them, so `drop_params` did not strip it; the call is now retried once on the
+  provider default. Detection is by error shape, not a model allowlist.
+
+### Changed
+- Premium presets (`consensus`, `devil`, `panel`, `deep`, `arena`) now convene
+  flagships — `openai/gpt-5.6`, `gemini/gemini-3.1-pro-preview`,
+  `mistral/mistral-large-latest`. Cheap presets (`flash`, `nano`, `trio`,
+  `code`, `copy`, `factcheck`, `redteam`) are unchanged.
+- `timeout_per_model` raised from 60s to 120s: flagship reasoning models were
+  timing out spuriously on an 8192-token budget.
+
 ### Added
+- `test_configured_model_is_known_to_litellm` validates every model id in the
+  shipped config against the LiteLLM registry, catching retired or misspelled
+  ids (e.g. `gemini/gemini-3-pro`, which needs the `-preview` suffix) offline.
 - MIT license, README, CONTRIBUTING, SECURITY policy and this changelog.
 - GitHub Actions CI: tests, real entrypoint import, a build-and-install
   wheel smoke test, `ruff` (F, E9, I, UP) and `pip-audit`, across

@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
@@ -98,3 +99,54 @@ def test_sanitize_error_maps_known_types():
     assert "timed out" in _sanitize_error("m", TimeoutError("request timed out"))
     assert "rate limited" in _sanitize_error("m", Exception("429 Too Many Requests"))
     assert "m:" in _sanitize_error("m", Exception("weird boom"))
+
+
+class BadRequestError(Exception):
+    """Stand-in for litellm.BadRequestError (matched by class name)."""
+
+
+def test_is_temperature_rejection_only_fires_on_temperature():
+    from rasputin.providers import _is_temperature_rejection
+
+    real = BadRequestError(
+        "litellm.BadRequestError: OpenAIException - Unsupported value: "
+        "'temperature' does not support 0.7 with this model."
+    )
+    assert _is_temperature_rejection(real)
+
+    # A different bad request must not be retried into a second billed call.
+    assert not _is_temperature_rejection(BadRequestError("context length exceeded"))
+    # Nor must an unrelated exception type that happens to mention temperature.
+    assert not _is_temperature_rejection(Exception("unsupported temperature"))
+
+
+def test_query_model_retries_without_temperature(monkeypatch):
+    import asyncio
+
+    from rasputin import providers
+
+    calls = []
+
+    async def fake_acompletion(**kwargs):
+        calls.append(kwargs)
+        if "temperature" in kwargs:
+            raise BadRequestError("Unsupported value: 'temperature' does not support 0.7")
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+            _hidden_params={"response_cost": 0.0},
+        )
+
+    monkeypatch.setattr(providers, "_get_acompletion", lambda: fake_acompletion)
+
+    result = asyncio.run(
+        providers.query_model(
+            model="openai/gpt-5.6",
+            messages=[{"role": "user", "content": "hi"}],
+            temperature=0.7,
+        )
+    )
+
+    assert result["content"] == "ok"
+    assert len(calls) == 2
+    assert "temperature" in calls[0] and "temperature" not in calls[1]

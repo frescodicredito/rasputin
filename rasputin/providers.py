@@ -82,6 +82,16 @@ def _sanitize_error(model: str, exc: Exception) -> str:
     return f"{model}: {reason}"
 
 
+def _is_temperature_rejection(exc: Exception) -> bool:
+    """True when the provider refused the request solely over ``temperature``."""
+    if type(exc).__name__ not in ("BadRequestError", "UnsupportedParamsError"):
+        return False
+    message = str(exc).lower()
+    return "temperature" in message and (
+        "unsupported" in message or "does not support" in message
+    )
+
+
 async def query_model(
     model: str,
     messages: list[dict],
@@ -110,7 +120,17 @@ async def query_model(
         kwargs["response_format"] = response_format
 
     acompletion = _get_acompletion()
-    response = await acompletion(**kwargs)
+    try:
+        response = await acompletion(**kwargs)
+    except Exception as exc:
+        # gpt-5.5/5.6 reject any temperature but 1, and LiteLLM's param table
+        # still lists temperature as supported for them — so drop_params does
+        # not strip it and the call 400s. Retry on the provider default rather
+        # than hardcoding a model list that goes stale with the next release.
+        if not _is_temperature_rejection(exc):
+            raise
+        kwargs.pop("temperature", None)
+        response = await acompletion(**kwargs)
 
     return _parse_response(response)
 

@@ -3,7 +3,9 @@ defaults:
   max_output_tokens: 8192   # raised from 4096: gpt-5/o-series spend part of the
                             # completion budget on reasoning tokens before the
                             # visible answer; 4096 risks truncated/empty replies.
-  timeout_per_model: 60
+  timeout_per_model: 120    # raised from 60: flagship reasoning models (gpt-5.6,
+                            # gemini-3.x-pro) routinely spend 60-90s on an 8192
+                            # token budget; 60 produced spurious timeouts.
   max_file_chars: 200000     # per-file cap on extracted text sent to the models
                             # (bounds token cost; files are also hard-capped at
                             # 50 MB on disk before parsing).
@@ -18,13 +20,23 @@ council:
   max_sessions: 100          # LRU cap on concurrent in-memory sessions
   max_cost_usd: 0            # debate budget cap in USD; 0 = no cap
 
-# Sweet-spot model selection (maggio 2026):
-#   - OpenAI gpt-5 family: same price tier as the old gpt-4.1 family, one full
-#     generation ahead (gpt-5 1.25/10, gpt-5-mini 0.25/2, gpt-5-nano 0.05/0.40).
-#     gpt-5.4/5.5 add marginal capability at 2-4x the cost — not worth it here.
-#   - Gemini: gemini-flash-latest (same price as 2.5-flash, tracks newest flash)
-#     for cheap tiers; gemini-3.1-pro-preview (2/12) only on premium presets.
-#   - Mistral: already optimal via -latest (large 0.50/1.50, small 0.06/0.18).
+# Model selection (agosto 2026) — two tiers, deliberately split:
+#
+# Cheap tier (flash, nano, trio, code, copy, factcheck, redteam): the gpt-5
+# family sits at the old gpt-4.1 price point one generation ahead (gpt-5 1.25/10,
+# gpt-5-mini 0.25/2, gpt-5-nano 0.05/0.40), paired with gemini-flash-latest
+# (0.30/2.50, tracks the newest flash) and mistral -latest (large 0.50/1.50,
+# small 0.06/0.18). These run many times a day; the 3-4x jump to a flagship is
+# not worth it here.
+#
+# Premium tier (consensus, devil, panel, deep, arena): flagships, because these
+# presets are convened on decisions where being wrong costs more than the run —
+# gpt-5.6 (5/30), gemini-3.1-pro-preview (2/12), mistral-large-latest.
+#
+# All ids above are registered in litellm 1.89. Registry presence is not proof
+# the account can call them: gpt-5.6 in particular may be access-gated, in which
+# case fall back to gpt-5.5, then gpt-5.4. Gemini 3.x pro exists only with the
+# "-preview" suffix — a bare "gemini/gemini-3-pro" is not a valid id.
 
 presets:
   flash:
@@ -123,11 +135,11 @@ presets:
     description: "Convergence-seeking council"
     mode: review
     models:
-      - id: "gemini/gemini-flash-latest"
+      - id: "gemini/gemini-3.1-pro-preview"
         role: voter
-      - id: "openai/gpt-5-mini"
+      - id: "openai/gpt-5.6"
         role: voter
-      - id: "mistral/mistral-small-latest"
+      - id: "mistral/mistral-large-latest"
         role: voter
     rounds:
       1:
@@ -145,7 +157,7 @@ presets:
     models:
       - id: "mistral/mistral-large-latest"
         role: contrarian
-      - id: "openai/gpt-5"
+      - id: "openai/gpt-5.6"
         role: contrarian
       - id: "gemini/gemini-3.1-pro-preview"
         role: contrarian
@@ -166,7 +178,7 @@ presets:
         system_prompt: >
           You are a STRATEGIST. Long-term implications, positioning,
           opportunity cost, competitive dynamics.
-      - id: "openai/gpt-5"
+      - id: "openai/gpt-5.6"
         role: engineer
         system_prompt: >
           You are an ENGINEER. Feasibility, tech debt, scalability,
@@ -183,7 +195,7 @@ presets:
     models:
       - id: "gemini/gemini-3.1-pro-preview"
         role: reviewer
-      - id: "openai/gpt-5"
+      - id: "openai/gpt-5.6"
         role: reviewer
       - id: "mistral/mistral-large-latest"
         role: reviewer
@@ -201,7 +213,7 @@ presets:
     mode: debate
     max_rounds: 3
     models:
-      - id: "openai/gpt-5"
+      - id: "openai/gpt-5.6"
         role: pro
         system_prompt: >
           Argue IN FAVOR. Build the strongest possible case.
