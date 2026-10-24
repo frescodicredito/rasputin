@@ -17,7 +17,7 @@ classifiers = [
     "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
-    "fastmcp>=3.4,<4",
+    "fastmcp>=3.4.10,<4",
     "litellm>=1.89,<2",
     "pyyaml>=6,<7",
     "pdfplumber>=0.11,<0.13",
